@@ -19,9 +19,80 @@ zen_nospam() {
   zenity 2> >(grep -v 'Gtk' >&2) "$@"
 }
 
+add_to_steam() {
+  local exe_path="$1"
+  local app_name="$2"
+  local launch_options="$3"
+  
+  # Find the shortcuts.vdf file
+  local shortcuts_vdf="$HOME/.local/share/Steam/config/shortcuts.vdf"
+  
+  # Create backup
+  local backup_vdf="$HOME/.local/share/Steam/config/shortcuts.vdf.backup.$(date +%s)"
+  cp "$shortcuts_vdf" "$backup_vdf"
+  
+  # Generate a unique 32-bit signed integer AppID
+  local random_appid=$(echo $((RANDOM % 1073741824 - 536870912)))
+  
+  # Check if the shortcuts.vdf has the expected structure
+  if ! grep -q '"shortcuts"' "$shortcuts_vdf"; then
+    zen_nospam --error --text="Error: shortcuts.vdf structure invalid. Restore backup and try again."
+    return 1
+  fi
+  
+  # Create a temporary file for the new VDF content
+  local temp_vdf=$(mktemp)
+  
+  # Read the shortcuts.vdf and insert our new entry before the final closing brace
+  awk -v appid="$random_appid" -v exe_path="$(printf '%s' "$exe_path" | sed 's/\\/\\\\/g; s/"/\\"/g')" \
+      -v app_name="$(printf '%s' "$app_name" | sed 's/\\/\\\\/g; s/"/\\"/g')" \
+      -v launch_options="$(printf '%s' "$launch_options" | sed 's/\\/\\\\/g; s/"/\\"/g')" \
+      -v exe_dir="$(dirname "$exe_path" | sed 's/\\/\\\\/g; s/"/\\"/g')" \
+  '
+  BEGIN {
+    in_shortcuts = 0
+    inserted = 0
+  }
+  
+  /"shortcuts"/ {
+    in_shortcuts = 1
+    print $0
+    next
+  }
+  
+  in_shortcuts && /}$/ && !inserted {
+    inserted = 1
+    print "\t\"" appid "\""
+    print "\t{"
+    print "\t\t\"AllowDesktopConfig\"\t\t\"1\""
+    print "\t\t\"AppName\"\t\t\"" app_name "\""
+    print "\t\t\"Exe\"\t\t\"" exe_path "\""
+    print "\t\t\"StartDir\"\t\t\"" exe_dir "\""
+    print "\t\t\"Icon\"\t\t\"\""
+    print "\t\t\"LaunchOptions\"\t\t\"" launch_options "\""
+    print "\t\t\"ShortcutPath\"\t\t\"\""
+    print "\t\t\"IsHidden\"\t\t\"0\""
+    print "\t\t\"IsReadOnly\"\t\t\"0\""
+    print "\t\t\"tags\""
+    print "\t\t{"
+    print "\t\t}"
+    print "\t}"
+    print $0
+    next
+  }
+  
+  { print $0 }
+  ' "$shortcuts_vdf" > "$temp_vdf"
+  
+  # Replace the original file with our modified version
+  mv "$temp_vdf" "$shortcuts_vdf"
+  
+  return 0
+}
+
 check_and_install_dependencies() {
   local missing_tools=()
-  local tools=("steamtinkerlaunch" "curl" "unzip" "jq" "7z")
+  local tools=("curl" "unzip" "jq" "7z")
   
   # Check for mandatory tools
   for tool in "${tools[@]}"; do
@@ -77,7 +148,7 @@ check_and_install_dependencies() {
       echo "100" ; echo "# Tools installed successfully" ;
     ) | zen_nospam --progress --title="Installing Tools" --width=300 --height=100 --text="Installing..." --percentage=0 --no-cancel --auto-close
   else
-    zen_nospam --error --text="Required tools are missing. Please install them manually and run the installer again.\n\nRequired: steamtinkerlaunch, unzip, curl, jq, 7z (via pacman)\nOptional: aria2c (via pacman)"
+    zen_nospam --error --text="Required tools are missing. Please install them manually and run the installer again.\n\nRequired: unzip, curl, jq, 7z (via pacman)\nOptional: aria2c (via pacman)"
     exit 1
   fi
 }
@@ -107,8 +178,12 @@ main() {
       zen_nospam --error --text="Could not find Minecraft.Windows.exe. Please reinstall the game first."
       exit 1
     fi
-    steamtinkerlaunch addnonsteamgame -ep="$main_exe" -an="Minecraft Bedrock (GDK)" -clo="$LAUNCH_OPTIONS"
-    zen_nospam --info --width=500 --height=200 --text="Minecraft Bedrock has been added to your Steam library!\n\nFinal Step:\nIn Steam, right-click 'Minecraft Bedrock (GDK)' -> Properties -> Compatibility, and select 'GE-Proton...'."
+    
+    if add_to_steam "$main_exe" "Minecraft Bedrock (GDK)" "$LAUNCH_OPTIONS"; then
+      zen_nospam --info --width=500 --height=200 --text="Minecraft Bedrock has been added to your Steam library!\n\nFinal Step:\nIn Steam, right-click 'Minecraft Bedrock (GDK)' -> Properties -> Compatibility, and select 'GE-Proton...'."
+    else
+      zen_nospam --error --text="Failed to add Minecraft to Steam library. Please check the error message and try again."
+    fi
     exit 0
   fi
 
@@ -183,12 +258,15 @@ main() {
     ) | zen_nospam --progress --title="Installing Minecraft Bedrock" --width=400 --height=150 --text="Installing Minecraft Bedrock..." --percentage=0 --no-cancel --auto-close
   fi
 
-  # Add to Steam using SteamTinkerLaunch with custom launch options
+  # Add to Steam using our custom function
   if [[ "$install_option" == "full_install" || "$install_option" == "reinstall_minecraft" || "$install_option" == "add_to_steam" ]]; then
     local main_exe=$(find "$MINECRAFT_DIR" -name "Minecraft.Windows.exe" | head -n 1)
     if [[ -f "$main_exe" ]]; then
-      steamtinkerlaunch addnonsteamgame -ep="$main_exe" -an="Minecraft Bedrock (GDK)" -clo="$LAUNCH_OPTIONS"
-      zen_nospam --info --width=500 --height=250 --text="Installation complete!\n\n'Minecraft Bedrock (GDK)' has been added to your Steam library.\n\nFinal Step:\nIn Steam, right-click the game -> Properties -> Compatibility, and select 'GE-Proton...'.\n\nFor joystick support, you may need to install runtimes using Protontricks after setting the compatibility tool."
+      if add_to_steam "$main_exe" "Minecraft Bedrock (GDK)" "$LAUNCH_OPTIONS"; then
+        zen_nospam --info --width=500 --height=250 --text="Installation complete!\n\n'Minecraft Bedrock (GDK)' has been added to your Steam library.\n\nFinal Step:\nIn Steam, right-click the game -> Properties -> Compatibility, and select 'GE-Proton...'.\n\nFor joystick support, you may need to install runtimes using Protontricks after setting the compatibility tool."
+      else
+        zen_nospam --error --text="Could not add Minecraft to Steam library. Please try again."
+      fi
     else
       zen_nospam --error --text="Could not find the game executable. Please try reinstalling."
     fi
