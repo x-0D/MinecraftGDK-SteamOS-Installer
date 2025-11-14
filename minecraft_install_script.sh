@@ -96,7 +96,7 @@ main() {
   fi
 
   if [[ "$install_option" == "uninstall" ]]; then
-    (rm -rf "${COMPATTOOLS_DIR}/GE-Proton"* && rm -rf "${MINECRAFT_DIR}" && rm -rf "${MINECRAFT_DIR}/../etc")
+    (rm -rf "${MINECRAFT_DIR}" && rm -rf "${MINECRAFT_DIR}/../etc")
     zen_nospam --info --text="Minecraft Bedrock and its components have been removed."
     exit 0
   fi
