@@ -145,7 +145,7 @@ main() {
 
   if [[ "$install_option" == "full_install" || "$install_option" == "reinstall_minecraft" ]]; then
     local minecraft_archive
-    minecraft_archive=$(zen_nospam --title="Select Minecraft Bedrock Archive" --file-selection --file-filter="*.zip *.exe *.7z | Archives")
+    minecraft_archive=$(zen_nospam --title="Select Minecraft Bedrock Archive" --file-selection --file-filter="ZIP Archives | *.zip" --file-filter="All Files | *")
     if [[ $? -ne 0 || -z "$minecraft_archive" ]]; then
       zen_nospam --error --text="No archive selected. Installation cancelled."
       exit 1
