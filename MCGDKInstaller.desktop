@@ -1,0 +1,10 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=Установщик Minecraft для Steam Deck
+Name[en]=Minecraft Installer for Steam Deck
+Exec=sh -c 'rm -f /tmp/minecraft_install_script.sh; curl -S -s -L -o /tmp/minecraft_install_script.sh https://raw.githubusercontent.com/x-0D/MinecraftGDK-SteamOS-Installer/main/minecraft_install_script.sh && bash /tmp/minecraft_install_script.sh || (echo "Ошибка загрузки установщика"; read)'
+Icon=steamdeck-gaming-return
+Terminal=true
+Type=Application
+StartupNotify=false
+Categories=Game;Application;
