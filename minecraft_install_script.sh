@@ -62,8 +62,10 @@ addNonSteamGame() {
     exit 1
   fi
 
-  local aid_vdf=$(generateShortcutVDFAppId "$appname$exe_path")
-  local aid_hex=$(generateShortcutVDFHexAppId "$aid_vdf")
+  local aid_vdf
+  aid_vdf=$(generateShortcutVDFAppId "$appname$exe_path")
+  local aid_hex
+  aid_hex=$(generateShortcutVDFHexAppId "$aid_vdf")
   local aid_hex_fmt="\x$(echo "$aid_hex" | fold -w2 | sed 's/$/\\x/')"
 
   local shortcuts_vdf="$STUIDPATH/config/$SCVDF"
@@ -78,7 +80,8 @@ addNonSteamGame() {
 
   truncate -s-4 "$shortcuts_vdf" 2>/dev/null
 
-  local last_set_id=$(grep -oP '^00\s*(\d+)00' "$shortcuts_vdf" 2>/dev/null | tail -n1 | grep -o '[0-9]\+' || echo '0')
+  local last_set_id
+  last_set_id=$(grep -oP '^00\s*(\d+)00' "$shortcuts_vdf" 2>/dev/null | tail -n1 | grep -o '[0-9]\+' || echo '0')
   local new_set_id=$((last_set_id + 1))
 
   {
@@ -104,9 +107,12 @@ zen_nospam() {
 }
 
 check_and_install_dependencies() {
-  local missing_tools=() tools=("curl" "unzip" "jq" "7z" "xxd" "md5sum" "fold")
+  local missing_tools=()
+  local tools=("curl" "unzip" "jq" "7z" "xxd" "md5sum" "fold")
   for tool in "${tools[@]}"; do
-    command -v "$tool" &> /dev/null || missing_tools+=("$tool")
+    if ! command -v "$tool" &> /dev/null; then
+      missing_tools+=("$tool")
+    fi
   done
 
   local aria2c_missing="no"
@@ -116,7 +122,7 @@ check_and_install_dependencies() {
     return 0
   fi
 
-  local message="Missing tools (install manually, e.g., sudo pacman -S <tool>):\n\n"
+  local message="Missing tools (install manually, e.g., run sudo pacman -S package_name):\n\n"
 
   if [[ ${#missing_tools[@]} -gt 0 ]]; then
     message+="Required:\n"
@@ -133,7 +139,9 @@ check_and_install_dependencies() {
   message+="Exiting."
 
   zen_nospam --error --title="Missing Tools" --width=450 --height=300 --text="$message"
-  [[ ${#missing_tools[@]} -gt 0 ]] && exit 1
+  if [[ ${#missing_tools[@]} -gt 0 ]]; then
+    exit 1
+  fi
 }
 
 get_installed_proton_version() {
@@ -166,7 +174,11 @@ check_and_update_proton() {
     rm -rf "${COMPATTOOLS_DIR}/GE-Proton*"
 
     echo "30" ; echo "Downloading..."
-    command -v aria2c &> /dev/null && aria2c -d "$COMPATTOOLS_DIR" -o "gdk_proton.tar.gz" "$download_url" || curl -L -o "$temp_tar" "$download_url"
+    if command -v aria2c &> /dev/null; then
+      aria2c -d "$COMPATTOOLS_DIR" -o "gdk_proton.tar.gz" "$download_url"
+    else
+      curl -L -o "$temp_tar" "$download_url"
+    fi
 
     echo "60" ; echo "Extracting..."
     tar -xzf "$temp_tar" -C "$COMPATTOOLS_DIR"
@@ -196,12 +208,16 @@ validate_minecraft_archive() {
 }
 
 generate_installscript_vdf() {
-  local msi_dir="$1" installscript="${MINECRAFT_DIR}/installscript.vdf"
+  local msi_dir="$1"
+  local installscript="${MINECRAFT_DIR}/installscript.vdf"
   local msi_files=($(find "$msi_dir" -name "*.msi" 2>/dev/null | sort))
   [[ ${#msi_files[@]} -eq 0 ]] && { rm -f "$installscript"; echo "No MSIs; skipping VDF."; return 0; }
 
   local wine_path="${COMPATTOOLS_DIR}/GE-Proton/files/bin/wine64"
-  [[ ! -f "$wine_path" ]] && wine_path="${COMPATTOOLS_DIR}/GE-Proton/bin/wine" || wine_path="wine"
+  if [[ ! -f "$wine_path" ]]; then
+    wine_path="${COMPATTOOLS_DIR}/GE-Proton/bin/wine"
+    [[ ! -f "$wine_path" ]] && wine_path="wine"
+  fi
 
   cat > "$installscript" << EOF
 "installscript"
@@ -228,8 +244,10 @@ EOF
 restart_steam() {
   if pgrep -x steam > /dev/null; then
     echo "Reloading Steam..."
-    pkill -USR1 -x steam  # Reload configs/shortcuts
-    [[ $(pgrep -f "steam.*--bigpicture") ]] && pkill -HUP -f "steam.*--bigpicture"
+    pkill -USR1 -x steam
+    if pgrep -f "steam.*--bigpicture" > /dev/null; then
+      pkill -HUP -f "steam.*--bigpicture"
+    fi
     sleep 2
     zen_nospam --info --text="Steam reloaded. Check library for 'Minecraft Bedrock (GDK)'."
   else
@@ -244,13 +262,15 @@ main() {
   local is_first_time=1
   [[ -f "$STATE_CHECK_FILE" ]] && is_first_time=0
 
-  # Proton check/update (force on first, optional otherwise)
   if [[ $is_first_time -eq 1 || ! -d "${COMPATTOOLS_DIR}/GE-Proton" ]]; then
     check_and_update_proton
   else
-    local installed_version=$(get_installed_proton_version)
-    local release_info=$(curl -s "$GITHUB_API_URL")
-    local latest_version=$(echo "$release_info" | jq -r '.tag_name' 2>/dev/null)
+    local installed_version
+    installed_version=$(get_installed_proton_version)
+    local release_info
+    release_info=$(curl -s "$GITHUB_API_URL")
+    local latest_version
+    latest_version=$(echo "$release_info" | jq -r '.tag_name' 2>/dev/null)
     if [[ "$installed_version" != "$latest_version" ]]; then
       if zen_nospam --question --title="Update Available" --text="Installed: $installed_version\nLatest: $latest_version\nUpdate?"; then
         check_and_update_proton
@@ -269,10 +289,6 @@ main() {
       FALSE "reinstall_minecraft" "Reinstall from archive" \
       FALSE "add_to_steam" "Add/Refresh to Steam" \
       FALSE "uninstall" "Remove all")
-    if [[ -z "$install_option" ]]; then
-      zen_nospam --error --text="Installation cancelled."
-      exit 1
-    fi
   fi
 
   if [[ "$install_option" == "uninstall" ]]; then
@@ -293,7 +309,6 @@ main() {
     exit 0
   fi
 
-  # full_install or reinstall_minecraft
   local minecraft_archive
   minecraft_archive=$(zen_nospam --title="Select Archive" --file-selection --file-filter="ZIP | *.zip" --file-filter="7z | *.7z" --file-filter="All | *")
   [[ $? -ne 0 || -z "$minecraft_archive" ]] && { zen_nospam --error --text="Cancelled."; exit 1; }
@@ -309,9 +324,13 @@ main() {
     mkdir -p "$MINECRAFT_DIR"
 
     echo "40" ; echo "Extracting..."
-    if [[ "$minecraft_archive" == *.zip ]]; then unzip -q "$minecraft_archive" -d "$MINECRAFT_DIR"
-    elif [[ "$minecraft_archive" == *.7z ]]; then 7z x "$minecraft_archive" -o"$MINECRAFT_DIR" -y
-    else tar -xf "$minecraft_archive" -C "$MINECRAFT_DIR"; fi
+    if [[ "$minecraft_archive" == *.zip ]]; then
+      unzip -q "$minecraft_archive" -d "$MINECRAFT_DIR"
+    elif [[ "$minecraft_archive" == *.7z ]]; then
+      7z x "$minecraft_archive" -o"$MINECRAFT_DIR" -y
+    else
+      tar -xf "$minecraft_archive" -C "$MINECRAFT_DIR"
+    fi
 
     [[ ! -f "$MINECRAFT_DIR/Minecraft.Windows.exe" ]] && { echo "Exe missing."; exit 1; }
 
@@ -321,9 +340,12 @@ main() {
 
     local curl_pkg="/tmp/curl_pkg.pkg.tar.zst"
     curl -L -o "$curl_pkg" "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-curl-8.17.0-1-any.pkg.tar.zst"
-    local temp_dir=$(mktemp -d)
+    local temp_dir
+    temp_dir=$(mktemp -d)
     tar -xf "$curl_pkg" -C "$temp_dir"
-    [[ -f "$temp_dir/mingw64/bin/libcurl-4.dll" ]] && cp "$temp_dir/mingw64/bin/libcurl-4.dll" "${MINECRAFT_DIR}/XCurl.dll"
+    if [[ -f "$temp_dir/mingw64/bin/libcurl-4.dll" ]]; then
+      cp "$temp_dir/mingw64/bin/libcurl-4.dll" "${MINECRAFT_DIR}/XCurl.dll"
+    fi
     rm -rf "$temp_dir" "$curl_pkg"
 
     local msi_dir="$MINECRAFT_DIR/Installers"
@@ -332,11 +354,11 @@ main() {
     echo "100" ; echo "Complete!"
   ) | zen_nospam --progress --title="Installing Minecraft" --width=400 --height=150 --text="..." --percentage=0 --no-cancel --auto-close
 
-  [[ $? -eq 0 ]] && {
+  if [[ $? -eq 0 ]]; then
     addNonSteamGame -ep="$MINECRAFT_DIR/Minecraft.Windows.exe" -an="Minecraft Bedrock (GDK)" -clo="$LAUNCH_OPTIONS"
     restart_steam
     zen_nospam --info --text="Installed. Added to Steam (redists via installscript.vdf). Verify GE-Proton in Properties."
-  }
+  fi
 }
 
 main
