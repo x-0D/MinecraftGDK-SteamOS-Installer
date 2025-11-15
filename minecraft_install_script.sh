@@ -1,4 +1,3 @@
-```bash
 #!/bin/bash
 
 # Minecraft Bedrock for Steam Deck Installer (Streamlined & Portable Version)
@@ -220,4 +219,3 @@ main() {
 }
 
 main
-```
