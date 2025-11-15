@@ -1,0 +1,11 @@
+"installscript"
+{
+	"run process"
+	{
+		"GameInputRedist"
+		{
+			"process 1"		"%INSTALLDIR%\\Installers\\GameInputRedist.msi"
+			"command 1"		"/quiet /norestart"
+			"nocleanup"		"0"
+	}
+}
