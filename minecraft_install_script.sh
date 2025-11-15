@@ -109,16 +109,28 @@ check_and_install_dependencies() {
     command -v "$tool" &> /dev/null || missing_tools+=("$tool")
   done
 
-  local aria2c_missing=$(command -v aria2c &> /dev/null || echo "yes")
+  local aria2c_missing="no"
+  command -v aria2c &> /dev/null || aria2c_missing="yes"
 
   if [[ ${#missing_tools[@]} -eq 0 && "$aria2c_missing" != "yes" ]]; then
     return 0
   fi
 
   local message="Missing tools (install manually, e.g., sudo pacman -S <tool>):\n\n"
-  [[ ${#missing_tools[@]} -gt 0 ]] && { message+="Required:\n"; printf '  - %s\n' "${missing_tools[@]}"; }
-  [[ "$aria2c_missing" == "yes" ]] && message+="\nOptional:\n  - aria2c\n"
-  message+="\nExiting."
+
+  if [[ ${#missing_tools[@]} -gt 0 ]]; then
+    message+="Required:\n"
+    for tool in "${missing_tools[@]}"; do
+      message+="  - ${tool}\n"
+    done
+    message+="\n"
+  fi
+
+  if [[ "$aria2c_missing" == "yes" ]]; then
+    message+="Optional:\n  - aria2c\n\n"
+  fi
+
+  message+="Exiting."
 
   zen_nospam --error --title="Missing Tools" --width=450 --height=300 --text="$message"
   [[ ${#missing_tools[@]} -gt 0 ]] && exit 1
@@ -257,6 +269,10 @@ main() {
       FALSE "reinstall_minecraft" "Reinstall from archive" \
       FALSE "add_to_steam" "Add/Refresh to Steam" \
       FALSE "uninstall" "Remove all")
+    if [[ -z "$install_option" ]]; then
+      zen_nospam --error --text="Installation cancelled."
+      exit 1
+    fi
   fi
 
   if [[ "$install_option" == "uninstall" ]]; then
