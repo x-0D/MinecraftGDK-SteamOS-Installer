@@ -1,5 +1,11 @@
 # MinecraftGDK-SteamOS-Installer
 
+> USE WITH CAUTION!
+> currently, project in wip state.
+> installation probably destroy your NonSteam Games Shortcuts.
+> basic installation of Minecraft BE (GDK) is okay.
+> contribute if you know how to force steam to perform first time install script on non steam games
+
 Install Minecraft Bedrock Edition on SteamOS with ease.
 
 This project provides a user-friendly, all-in-one installer script that automates the entire process of getting Minecraft Bedrock Edition (GDK version) running on a Steam Deck or any SteamOS system. It handles everything from installing dependencies to setting up the correct Proton compatibility layer and adding the game to your Steam library.
